@@ -66,8 +66,7 @@ object HNSWIndex {
         // I use DOT_PRODUCT because we L2-normalized all vectors
         val indexBuilder = new GraphIndexBuilder(dvv, VectorSimilarityFunction.DOT_PRODUCT, 32, 100, 1.2f, 1.2f, true)
         val graphIndex   = indexBuilder.getGraph()
-
-        active(indexName, vectors, dimensions /*dvv*/, vts, embedder, graphIndex, indexBuilder, db)
+        active(indexName, vectors, dimensions, vts, embedder, graphIndex, indexBuilder, db)
       }
     }
 
@@ -80,11 +79,14 @@ object HNSWIndex {
     graphIndex: ImmutableGraphIndex,
     builder: GraphIndexBuilder,
     db: RocksDB
-  )(implicit ctx: ActorContext[Protocol], sch: TimerScheduler[Protocol]): Behavior[Protocol] =
+  )(implicit
+    ctx: ActorContext[Protocol],
+    sch: TimerScheduler[Protocol]
+  ): Behavior[Protocol] =
     Behaviors.receiveMessage {
       case Protocol.Put(_, _, text, replyTo) =>
         val nextNodeId = vectors.size()
-        ctx.log.info("[{}]: Put {} {}", ctx.self.path.toString, text, nextNodeId)
+        ctx.log.info("Put {} at position {}", text, nextNodeId)
         val bts        = embedder.embed(text)
         val embeddings = vts.createFloatVector(bts)
         vectors.add(nextNodeId, embeddings)
@@ -102,22 +104,20 @@ object HNSWIndex {
           db.put(writeInt(nextNodeId), text.getBytes(StandardCharsets.UTF_8))
         }
         replyTo.tell(Done)
-        active(indexName, vectors, dimensions, /*dvv,*/ vts, embedder, graphIndex, builder, db)
+        active(indexName, vectors, dimensions, vts, embedder, graphIndex, builder, db)
 
-      case Protocol.Get(reqId, _, limit, query, replyTo) =>
-        ctx.log
-          .info("[{}]: Sizes:{} bts/{} elements", ctx.self.path.toString, graphIndex.ramBytesUsed(), vectors.size())
+      case Protocol.Get(_, _, topN, query, replyTo) =>
+        ctx.log.info("Index sizes:{} bts/{} elements", graphIndex.ramBytesUsed(), vectors.size())
         val ssp = DefaultSearchScoreProvider.exact(
           vts.createFloatVector(embedder.embed(query)),
           VectorSimilarityFunction.DOT_PRODUCT,
           new ListRandomAccessVectorValues(vectors, dimensions)
         )
-        search(reqId, graphIndex, db, ssp, query, replyTo, limit)
+        search(graphIndex, db, ssp, query, replyTo, topN)
         Behaviors.same
     }
 
   def search(
-    reqId: String,
     graphIndex: ImmutableGraphIndex,
     db: RocksDB,
     ssp: SearchScoreProvider,
@@ -129,12 +129,12 @@ object HNSWIndex {
       val startTs = System.nanoTime()
       val result  = searcher.search(ssp, topN, Bits.ALL)
 
-      println(s"★ ★ ★ $reqId Search took ${(System.nanoTime - startTs) / 1_000L} micro. query=$query")
+      println(s"★ ★ ★ query=$query. Search took ${(System.nanoTime - startTs) / 1_000L} micro")
       val results = new ArrayBuffer[String](topN)
       for (ns <- result.getNodes()) {
         val nodeId = ns.node
         val score  = ns.score
-        results.addOne(s"$nodeId,$score")
+        results.addOne(s"score:$score;nodeId:$nodeId")
         // TODO: ???
         Option(db.get(writeInt(nodeId))).foreach { bytes =>
           println(s"id=$nodeId:score=$score - ${new String(bytes, StandardCharsets.UTF_8)}")
@@ -145,6 +145,6 @@ object HNSWIndex {
       if (results.isEmpty)
         replyTo.tell(None)
       else
-        replyTo.tell(Some(results.mkString(", ")))
+        replyTo.tell(Some(results.mkString("[", ", ", "]")))
     }
 }

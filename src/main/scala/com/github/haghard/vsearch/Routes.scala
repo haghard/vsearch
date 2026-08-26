@@ -33,21 +33,21 @@ trait Routes {
 
     val reviewsFile = Paths.get("./reviews.csv")
     val reader      = new CSVReader(new BufferedReader(new FileReader(reviewsFile.toFile)))
-    reader.readNext()
+    reader.readNext() // drop header
 
     Source
       .fromIterator(() => reader.iterator().asScala)
-      .take(10_000)
-      .grouped(32)
-      .mapAsync(2) { lines =>
-        val reqId = ulid.ULID.newULID.toString
-        graphIndexRouter.ask[Done](HNSWIndex.Protocol.PutN("reviews", reqId, lines.filter(_ ne null).map(_(9)), _))
+      .take(20_000)
+      .grouped(16)
+      .mapAsync(3) { lines =>
+        graphIndexRouter.ask[Done](
+          HNSWIndex.Protocol.PutN("reviews", ulid.ULID.newULID.toString, lines.map(_(9)), _)
+        )
       }
       .run()
       .onComplete(_ => println("reviews.csv injected"))(system.executionContext)
 
     // http :8080/index/reviews/search"?q=awesome coffee"
-
     get {
       path("jcmd") {
         val f = Future(println(HeapUtils.logJcmd()))(

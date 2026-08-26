@@ -1,9 +1,10 @@
 name := "vsearch"
 
 organization := "haghard"
-version := "0.1.0"
 scalaVersion := "2.13.18"
+version := "0.1.0"
 
+//Last Apache2 version https://doc.akka.io/reference/release-notes/2023-05-16-akka-23.5-released.html
 val AkkaVersion = "2.8.2"
 val akkaHttpVersion = "10.5.2"
 
@@ -84,9 +85,9 @@ libraryDependencies ++= Seq(
 
   "com.microsoft.onnxruntime" % "onnxruntime" % "1.29.0",
   "ai.djl.huggingface" % "tokenizers" % "0.36.0",
-  "com.opencsv" % "opencsv" % "5.12.0",
 
-  //"org.tribuo" % "tribuo-clustering-hdbscan" % "4.3.2",
+  //to inject product reviews internally, can be removed.
+  "com.opencsv" % "opencsv" % "5.12.0",
 
   ("io.github.jbellis" % "jvector" % "4.0.0-rc.9").exclude("org.slf4j", "slf4j-api"),
 
@@ -96,8 +97,10 @@ libraryDependencies ++= Seq(
 
 Compile / mainClass := Some("com.github.haghard.vsearch.Program")
 
+mainClass := Some("com.github.haghard.vsearch.Program")
+
 //for ammonite
-//run / fork := false
+run / fork := true
 
 // ammonite repl
 Test / sourceGenerators += Def.task {
@@ -106,8 +109,7 @@ Test / sourceGenerators += Def.task {
   Seq(file)
 }.taskValue
 
-
-/*assemblyMergeStrategy := {
+assemblyMergeStrategy := {
   case x if x.endsWith("module-info.class") => MergeStrategy.discard
   case x if x.endsWith(".proto") => MergeStrategy.discard
   case x if x.endsWith("io.netty.versions.properties") => MergeStrategy.first
@@ -119,54 +121,16 @@ Test / sourceGenerators += Def.task {
   case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard
   case PathList("META-INF", _*) => MergeStrategy.first
   case _ => MergeStrategy.first
-}*/
+}
 
-/*
-graalVMNativeImageOptions ++= Seq(
-  "--enable-monitoring=jfr,jvmstat,jcmd,threaddump,heapdump,nmt",
-  "--enable-preview",
-  "--add-modules=jdk.incubator.vector",
-  "-H:+UnlockExperimentalVMOptions",
-  "--verbose",
-  "--no-fallback",
-  "-J--enable-native-access=ALL-UNNAMED",
-  "--report-unsupported-elements-at-runtime",
-  "--enable-url-protocols=http,https",
-  "-H:IncludeResources=.*\\.properties", // ── Resources to bundle in the binary ──
-  //"-H:IncludeResources=models/.*", // ── Resources to bundle in the binary ──
-  "-H:IncludeResources=jina-embeddings-v2-base-en/.*",
-  "-H:ResourceConfigurationFiles=" + baseDirectory.value / "conf-agent" / "resource-config.json",
-  "-H:ReflectionConfigurationFiles=" + baseDirectory.value / "conf-agent" / "reflect-config.json",
-  "-J-Xmx3g",
-  "--gc=serial", //"--gc=G1",
-  "-R:MinHeapSize=256m","-R:MaxHeapSize=512m", //bakes defaults into binary
-  //"-J-XX:+UseG1GC",
-  "--enable-all-security-services",
-  "--emit build-report",
-  "--initialize-at-build-time",
-  // ── ONNX Runtime: JNI-heavy, must init at runtime ──
-  "--initialize-at-run-time=ai.onnxruntime",
-  "--initialize-at-run-time=ai.djl",
-  "--initialize-at-run-time=io.github.jbellis.jvector",
-  // ── Logback: runtime init to avoid build-time logging context issues ──
-  //"--initialize-at-run-time=ch.qos.logback",
-  "-O2", // ── Reduce binary size ──
-  "--initialize-at-run-time=akka.protobuf.DescriptorProtos,com.typesafe.config.impl.ConfigImpl$EnvVariablesHolder,com.oracle.truffle.js.scriptengine.GraalJSEngineFactory," +
-  "com.typesafe.config.impl.ConfigImpl$SystemPropertiesHolder"
-)
-
-*/
-
-// clean;nativeImage
-// ./target/native-image/akka-graal-native
-
+assemblyJarName := s"${name.value}-${version.value}.jar"
+//scalaBinaryVersion := "2.13" //3
 
 Compile / run / fork := true
 Compile / run / javaOptions += "-agentlib:native-image-agent=config-output-dir=src/main/resources/META-INF/native-image"
 
-
 // GraalVM native image build
-enablePlugins(NativeImagePlugin)
+enablePlugins(NativeImagePlugin, JavaAppPackaging, BuildInfoPlugin)
 nativeImageJvm := "graalvm-community"
 //https://github.com/graalvm/container/pkgs/container/native-image-community
 //https://medium.com/graalvm/graalvm-25-3-is-here-41641acebfaf
@@ -183,39 +147,33 @@ nativeImageOptions := Seq(
   "--enable-native-access=ALL-UNNAMED",
   "-H:+VectorAPISupport",
   "-R:MinHeapSize=512m","-R:MaxHeapSize=512m", //bakes defaults into binary
-  //"-H:IncludeResources=.*librocksdbjni-.*",
+  //"-R:MaxRAMPercentage=70",
+  "-R:MaxRAM=450m", // Physical memory size (in bytes). By default, the value is queried from the OS/container during VM startup.
+  "--gc=serial", //"--gc=G1" 
   //"-Ob",
+  //"-O2", // ── Reduce binary size ──
   "-R:ActiveProcessorCount=8",
   "--initialize-at-run-time=ch.qos.logback"
 )
-
+nativeImageOutput := target.value / "native-image" / s"${name.value}-${version.value}"
 
 NativeImage / mainClass := Some("com.github.haghard.vsearch.Program")
 // silence warnings for these keys (used in dynamic task)
 Global / excludeLintKeys ++= Set(nativeImageJvm, nativeImageVersion)
 
+buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion)
+buildInfoPackage := "com.github.haghard.vsearch"
+buildInfoOptions := Seq(BuildInfoOption.BuildTime)
+buildInfoOptions += BuildInfoOption.BuildTime
+
+
 scalafmtOnCompile := true
 
 addCommandAlias("c", "compile")
 addCommandAlias("r", "reload")
-
+addCommandAlias("asm", "clean;assembly")
 
 //export JAVA_HOME=/Users/haghard/Downloads/graalvm-jdk-25.0.4+7.1/Contents/Home
 //export PATH=$JAVA_HOME/bin:$PATH
 
 
-/*
-
-Agentis Memory
-  https://habr.com/ru/articles/1018784/
-  https://scrobot.substack.com/p/agentis-memory-redis-compatible-store
-  https://github.com/scrobot/agentis-memory (GraalVM, jvector)/ Embeddings
-  all-MiniLM-L6-v2 via ONNX Runtime
-    ## Tech Stack
-- Java 26 + GraalVM native-image (single binary)
-  - ONNX Runtime via Panama FFI — embedded all-MiniLM-L6-v2 (~80MB, 384 dim)
-  - jvector (DataStax, Apache 2.0) — HNSW index for vector search
-  - Java Vector API — SIMD-accelerated cosine similarity
-  - Netty — TCP server for RESP protocol
-
-*/
