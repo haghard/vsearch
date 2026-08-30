@@ -57,7 +57,6 @@ trait HttpRouteSupport {
       }
     }
 
-  // https://github.com/haghard/gantt2/blob/layers/server/src/main/scala/haghard/gantt/api/UsersApi.scala
   def logResponseTime(log: Logger, httpMeter: Meter, httpGauges: TrieMap[String, LongGauge])(
     ctx: RequestContext
   ): Try[RouteResult] => Unit = {
