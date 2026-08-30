@@ -70,14 +70,16 @@ object Program extends Routes {
       logger.info(system.printTree)
       logger.info(s"Binding on $httpAddress $httpPort")
 
-      val indexRouter = ctx.spawn(IndexRouter(embedder, dimensions), "index-router")
+      val obsHandle   = Observability.init("vsearch")
+      val indexRouter = ctx.spawn(IndexRouter(obsHandle, embedder, dimensions), "index-router")
 
       Http()
         .newServerAt(httpAddress, httpPort)
-        .bind(httpRoutes(indexRouter))
+        .bind(httpRoutes(obsHandle, indexRouter))
         .failed
         .foreach { ex =>
           logger.error("Binding error", ex)
+          obsHandle.shutdown()
           CoordinatedShutdown(system).run(Command.BindFailure)
         }
       Behaviors.empty

@@ -14,6 +14,7 @@ import akka.http.scaladsl.model.HttpEntity.Strict
 import akka.http.scaladsl.model.HttpResponse
 import akka.stream.scaladsl.Source
 import com.opencsv.CSVReader
+import io.opentelemetry.api.metrics.LongGauge
 
 import java.io.{BufferedReader, FileReader}
 import java.nio.file.Paths
@@ -21,9 +22,11 @@ import scala.concurrent.Future
 import scala.jdk.CollectionConverters.IteratorHasAsScala
 import wvlet.airframe.*
 
-trait Routes {
+import scala.collection.concurrent.TrieMap
 
-  def httpRoutes(graphIndexRouter: ActorRef[HNSWIndex.Protocol])(implicit
+trait Routes extends HttpRouteSupport {
+
+  def httpRoutes(handle: Observability.Handle, graphIndexRouter: ActorRef[SearchIndex.Protocol])(implicit
     system: ActorSystem[?]
   ) = {
     implicit val sch              = system.scheduler
@@ -37,55 +40,60 @@ trait Routes {
 
     Source
       .fromIterator(() => reader.iterator().asScala)
-      .take(20_000)
+      .take(1_000)
       .grouped(16)
       .mapAsync(3) { lines =>
         graphIndexRouter.ask[Done](
-          HNSWIndex.Protocol.PutN("reviews", ulid.ULID.newULID.toString, lines.map(_(9)), _)
+          SearchIndex.Protocol.PutN("reviews", ulid.ULID.newULID.toString, lines.map(_(9)), _)
         )
       }
       .run()
       .onComplete(_ => println("reviews.csv injected"))(system.executionContext)
 
-    // http :8080/index/reviews/search"?q=awesome coffee"
-    get {
+    val httpMeter  = handle.telemetry.getMeter("http-root")
+    val httpGauges = TrieMap.empty[String, LongGauge]
+
+    aroundRequest(logResponseTime(system.log, httpMeter, httpGauges)) {
+      pathPrefix("index") {
+        get {
+          path(Segment / "search") { indexName =>
+            parameters(Symbol("q").as[String], Symbol("limit") ? 7) { (q, limit) =>
+              val reqId = ulid.ULID.newULID.toString
+              val f     = graphIndexRouter.ask[Option[String]](SearchIndex.Protocol.Get(indexName, reqId, limit, q, _))
+              // HttpResponse(entity = Strict(`text/html(UTF-8)`, ByteString(q)))
+              // onSuccess(f) { reqOpt => complete(reqOpt) }
+              onComplete(f) {
+                case Success(Some(results)) =>
+                  complete(HttpResponse(entity = Strict(`text/html(UTF-8)`, ByteString(results))))
+                // complete(OK -> s"""{"results":"${results}"}""")
+                case Success(None) =>
+                  complete(NotFound)
+                case Failure(err) =>
+                  complete(InternalServerError -> err)
+              }
+            }
+          }
+        } ~ post {
+          path(Segment / "save") { indexName =>
+            parameters(Symbol("text").as[String]) { text =>
+              val reqId = ulid.ULID.newULID.toString
+              val f     = graphIndexRouter.ask[Done](SearchIndex.Protocol.Put(indexName, reqId, text, _))
+              onComplete(f) {
+                case Success(_) =>
+                  complete(HttpResponse(entity = Strict(`text/html(UTF-8)`, ByteString(reqId))))
+                // complete(OK)
+                case Failure(err) => complete(InternalServerError -> err)
+              }
+            }
+          }
+        }
+      }
+    } ~ get {
       path("jcmd") {
         val f = Future(println(HeapUtils.logJcmd()))(
           system.dispatchers.lookup(DispatcherSelector.fromConfig("akka.jcmd-dispatcher"))
         )
         onSuccess(f)(complete(OK))
-      }
-    } ~ pathPrefix("index") {
-      get {
-        path(Segment / "search") { indexName =>
-          parameters(Symbol("q").as[String], Symbol("limit") ? 7) { (q, limit) =>
-            val reqId = ulid.ULID.newULID.toString
-            val f     = graphIndexRouter.ask[Option[String]](HNSWIndex.Protocol.Get(indexName, reqId, limit, q, _))
-            // HttpResponse(entity = Strict(`text/html(UTF-8)`, ByteString(q)))
-            // onSuccess(f) { reqOpt => complete(reqOpt) }
-            onComplete(f) {
-              case Success(Some(results)) =>
-                complete(HttpResponse(entity = Strict(`text/html(UTF-8)`, ByteString(results))))
-              case Success(None) => complete(NotFound)
-              case Failure(err)  => complete(InternalServerError -> err)
-            }
-
-          }
-        }
-      } ~ post {
-        // http POST :8080/index/reviews/save"?text=I am writing to inquire about student accommodation at the Shires College Hall of Residence at Cardiff University"
-        path(Segment / "save") { indexName =>
-          parameters(Symbol("text").as[String]) { text =>
-            val reqId = ulid.ULID.newULID.toString
-            val f     = graphIndexRouter.ask[Done](HNSWIndex.Protocol.Put(indexName, reqId, text, _))
-            onComplete(f) {
-              case Success(_) =>
-                complete(HttpResponse(entity = Strict(`text/html(UTF-8)`, ByteString(reqId))))
-              // complete(OK)
-              case Failure(err) => complete(InternalServerError -> err)
-            }
-          }
-        }
       }
     }
   }

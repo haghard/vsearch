@@ -93,6 +93,11 @@ libraryDependencies ++= Seq(
 
   "ch.qos.logback" % "logback-classic" % "1.6.3",
   //"com.lihaoyi" % "ammonite" % AmmoniteVersion % "test" cross CrossVersion.full
+  
+  "io.opentelemetry"                       % "opentelemetry-sdk"                         % "1.43.0",
+  "io.opentelemetry"                       % "opentelemetry-exporter-otlp"               % "1.43.0",
+  "io.opentelemetry"                       % "opentelemetry-sdk-extension-autoconfigure" % "1.43.0",
+  "io.opentelemetry.instrumentation"       % "opentelemetry-runtime-telemetry-java8"     % "2.9.0-alpha"
 )
 
 Compile / mainClass := Some("com.github.haghard.vsearch.Program")
