@@ -33,8 +33,10 @@ object Program extends Routes {
 
     // val embedder = new EmbeddingGenerator(Path.of("./jina-embeddings-v2-base-en")) 768
     // val embedder = new Embedder(Path.of("./all-MiniLM-L12-v2"))
-    val embedder = new Embedder(Path.of("./all-MiniLM-L6-v2")) // 384
-    val system   = ActorSystem(Program(embedder, 384, httpAddress, httpPort), "vector-search")
+    // val embedder = new Embedder(Path.of("./all-MiniLM-L6-v2"))
+    val dimension = 384
+    val embedder  = new Embedder(Path.of("./granite-embedding-30m-english"), dimension)
+    val system    = ActorSystem(Program(embedder, dimension, httpAddress, httpPort), "vector-search")
     system.log.info(s"Loaded configuration... ${system.settings.config.root().render(ConfigRenderOptions.concise())}")
 
     val totalMemory = ManagementFactory
@@ -61,7 +63,7 @@ object Program extends Routes {
     // System.getProperties().forEach((k: Any, v: Any) => (k, v) -> println(s"$k, $v"))
   }
 
-  def apply(embedder: Embedder, dimensions: Int, httpAddress: String, httpPort: Int): Behavior[Command] =
+  def apply(embedder: Embedder, dimension: Int, httpAddress: String, httpPort: Int): Behavior[Command] =
     Behaviors.setup { ctx =>
       implicit val system = ctx.system
       implicit val logger = ctx.log
@@ -70,12 +72,12 @@ object Program extends Routes {
       logger.info(system.printTree)
       logger.info(s"Binding on $httpAddress $httpPort")
 
-      val obsHandle   = Observability.init("vsearch")
-      val indexRouter = ctx.spawn(IndexRouter(obsHandle, embedder, dimensions), "index-router")
+      val obsHandle = Observability.init("vsearch")
+      val router    = ctx.spawn(IndexRouter(obsHandle, embedder, dimension), "index-router")
 
       Http()
         .newServerAt(httpAddress, httpPort)
-        .bind(httpRoutes(obsHandle, indexRouter))
+        .bind(httpRoutes(obsHandle, router))
         .failed
         .foreach { ex =>
           logger.error("Binding error", ex)

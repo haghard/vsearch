@@ -1,7 +1,8 @@
 # Akka HTTP / JVector / GraalVM 
-Example akka http project with jvector compiled with GraalVM.
+A sample `akka-http` + `jvector` application compiled and run on GraalVM.
 
-1. Download `model.onnx` https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/tree/main/onnx and put it in `all-MiniLM-L6-v2`
+1. Download `model.onnx` https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/tree/main/onnx and put it in `all-MiniLM-L6-v2` or https://huggingface.co/ibm-granite/granite-embedding-30m-english/tree/main/onnx to `granite-embedding-30m-english` 
+
 2. `docker-compose up`
 
 ## Tech Stack
@@ -16,6 +17,8 @@ Example akka http project with jvector compiled with GraalVM.
     java --add-modules jdk.incubator.vector --enable-native-access=ALL-UNNAMED --add-opens java.base/sun.nio.ch=ALL-UNNAMED -XX:+PrintCommandLineFlags -XX:NativeMemoryTracking=summary -Xmx512m -jar ./target/scala-2.13/vsearch-0.1.0.jar
 
 ### Compile, Build and Run on GraalJVM
+    export JAVA_HOME=/Users/myusr/graalvm-community-25.3.4.1+1.1/Contents/Home
+
     sbt run //generartes content in native-image
 
     sbt "clean;nativeImage"

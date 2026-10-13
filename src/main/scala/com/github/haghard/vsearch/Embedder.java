@@ -14,13 +14,18 @@ public class Embedder implements AutoCloseable {
     private final OrtSession session;
     private final HuggingFaceTokenizer tokenizer;
 
-    public Embedder(Path modelDir) throws Exception {
+    public Embedder(Path modelDir, int maxLength) throws Exception {
         this.env = OrtEnvironment.getEnvironment();
         try (OrtSession.SessionOptions opts = new OrtSession.SessionOptions()) {
             opts.setIntraOpNumThreads(2);
             this.session = env.createSession(modelDir.resolve("model.onnx").toString(), opts);
             System.out.println("Expected Input Names: " + session.getInputNames());
-            this.tokenizer = HuggingFaceTokenizer.newInstance(modelDir.resolve("tokenizer.json"));
+            //this.tokenizer = HuggingFaceTokenizer.newInstance(modelDir.resolve("tokenizer.json"));
+            this.tokenizer = HuggingFaceTokenizer.builder()
+                .optTokenizerPath(modelDir.resolve("tokenizer.json"))
+                .optMaxLength(maxLength)
+                .build();
+
             System.out.println(this.session.getMetadata().toString());
         }
     }
@@ -33,18 +38,18 @@ public class Embedder implements AutoCloseable {
 
         long[] inputIds = enc.getIds();
         long[] attentionMask = enc.getAttentionMask();
-        long[] tokenTypeIds = enc.getTypeIds();
+        //long[] tokenTypeIds = enc.getTypeIds();
         long[] shape = {1L, enc.getIds().length};
 
         try (
                 OnnxTensor inputIdsTensor = OnnxTensor.createTensor(env, LongBuffer.wrap(inputIds), shape);
                 OnnxTensor attentionMaskTensor = OnnxTensor.createTensor(env, LongBuffer.wrap(attentionMask), shape);
-                OnnxTensor tokenTypeIdsTensor = OnnxTensor.createTensor(env, LongBuffer.wrap(tokenTypeIds), shape)
+                //OnnxTensor tokenTypeIdsTensor = OnnxTensor.createTensor(env, LongBuffer.wrap(tokenTypeIds), shape)
         ) {
             Map<String, OnnxTensor> inputs = new HashMap<>();
             inputs.put("input_ids", inputIdsTensor);
             inputs.put("attention_mask", attentionMaskTensor);
-            inputs.put("token_type_ids", tokenTypeIdsTensor);
+            //inputs.put("token_type_ids", tokenTypeIdsTensor);
 
             try (OrtSession.Result result = session.run(inputs)) {
                 float[][][] hiddenState = (float[][][]) result.get(0).getValue();

@@ -11,7 +11,7 @@ val akkaHttpVersion = "10.5.2"
 //https://github.com/com-lihaoyi/Ammonite/releases
 val AmmoniteVersion = "3.0.9"
 
-//export JAVA_HOME=/Users/haghard/Downloads/graalvm-jdk-25.0.4+7.1/Contents/Home
+//export JAVA_HOME=/Users/haghard/Downloads/graalvm-community-25.3.4.1+1.1/Contents/Home
 val requiredJvmVersion = "25"
 
 initialize := {
@@ -81,22 +81,24 @@ libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-stream" % AkkaVersion,
   "org.wvlet.airframe" %% "airframe-ulid" % "2026.2.2",
 
-  "org.rocksdb" % "rocksdbjni" % "10.10.1.1",
+  "org.rocksdb" % "rocksdbjni" % "11.8.1",
 
-  "com.microsoft.onnxruntime" % "onnxruntime" % "1.29.0",
+  "com.microsoft.onnxruntime" % "onnxruntime" % "1.31.0",
+
+  //djl's native tokenizers package no longer bundles binaries for it past versions. You will need to stay on version 0.36.0
   "ai.djl.huggingface" % "tokenizers" % "0.36.0",
 
   //to inject product reviews internally, can be removed.
   "com.opencsv" % "opencsv" % "5.12.0",
 
-  ("io.github.jbellis" % "jvector" % "4.0.0-rc.9").exclude("org.slf4j", "slf4j-api"),
+  ("io.github.jbellis" % "jvector" % "4.0.1").exclude("org.slf4j", "slf4j-api"),
 
-  "ch.qos.logback" % "logback-classic" % "1.6.3",
+  "ch.qos.logback" % "logback-classic" % "1.6.5",
   //"com.lihaoyi" % "ammonite" % AmmoniteVersion % "test" cross CrossVersion.full
   
-  "io.opentelemetry"                       % "opentelemetry-sdk"                         % "1.43.0",
-  "io.opentelemetry"                       % "opentelemetry-exporter-otlp"               % "1.43.0",
-  "io.opentelemetry"                       % "opentelemetry-sdk-extension-autoconfigure" % "1.43.0",
+  "io.opentelemetry"                       % "opentelemetry-sdk"                         % "1.47.0", //1.47.0
+  "io.opentelemetry"                       % "opentelemetry-exporter-otlp"               % "1.47.0",
+  "io.opentelemetry"                       % "opentelemetry-sdk-extension-autoconfigure" % "1.47.0",
   "io.opentelemetry.instrumentation"       % "opentelemetry-runtime-telemetry-java8"     % "2.9.0-alpha"
 )
 
@@ -140,7 +142,12 @@ nativeImageJvm := "graalvm-community"
 //https://github.com/graalvm/container/pkgs/container/native-image-community
 //https://medium.com/graalvm/graalvm-25-3-is-here-41641acebfaf
 //https://github.com/graalvm/graalvm-demos
-nativeImageVersion := "25.0.2"// "21.0.2"
+//https://github.com/graalvm/graalvm-ce-builds/releases
+//https://github.com/graalvm/graalvm-ce-builds/releases/download/jdk-25.0.2/graalvm-community-jdk-25.0.2_macos-aarch64_bin.tar.gz
+//nativeImageVersion := "25.0.2"// "21.0.2",
+nativeImageVersion := "25.0.4.1"
+//path/to/graalvm-ce-25.3.4.1/bin/native-image
+nativeImageCommand := List("/Users/haghard/Downloads/graalvm-community-25.3.4.1+1.1/Contents/Home/bin/native-image")
 
 nativeImageOptions := Seq(
   //"-R:PrintFlags=", //(allowed categories: User, Expert, Debug). Default: None
@@ -151,6 +158,7 @@ nativeImageOptions := Seq(
   "--add-modules=jdk.incubator.vector",
   "--enable-native-access=ALL-UNNAMED",
   "-H:+VectorAPISupport",
+  "-H:+EnableFallbackCompilation", //Warning: Failed to compile float io.github.jbellis.jvector.vector.PanamaVectorUtilSupport.dotProductPreferred(VectorFloat, int, VectorFloat, int, int), retrying in fallback mode due to '-H:+EnableFallbackCompilation'. To report the issue please consider disabling the fallback.
   "-R:MinHeapSize=512m","-R:MaxHeapSize=512m", //bakes defaults into binary
   //"-R:MaxRAMPercentage=70",
   "-R:MaxRAM=450m", // Physical memory size (in bytes). By default, the value is queried from the OS/container during VM startup.
@@ -176,9 +184,9 @@ scalafmtOnCompile := true
 
 addCommandAlias("c", "compile")
 addCommandAlias("r", "reload")
-addCommandAlias("asm", "clean;assembly")
+addCommandAlias("native", "clean;nativeImage")
+addCommandAlias("build", "clean;assembly")
 
-//export JAVA_HOME=/Users/haghard/Downloads/graalvm-jdk-25.0.4+7.1/Contents/Home
-//export PATH=$JAVA_HOME/bin:$PATH
-
+//25.0.4.1
+//export JAVA_HOME=/Users/haghard/Downloads/graalvm-community-25.3.4.1+1.1/Contents/Home
 

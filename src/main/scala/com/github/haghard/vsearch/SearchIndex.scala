@@ -66,9 +66,18 @@ object SearchIndex {
         .setIncreaseParallelism(Runtime.getRuntime().availableProcessors())
       val db = RocksDB.open(options, dbPath)
 
-      // I use DOT_PRODUCT because we L2-normalized all vectors
-      val indexBuilder = new GraphIndexBuilder(dvv, VectorSimilarityFunction.DOT_PRODUCT, 32, 100, 1.2f, 1.2f, true)
-      val graphIndex   = indexBuilder.getGraph()
+      val indexBuilder = io.github.jbellis.jvector.graph.GraphIndexBuilder
+        .builder(
+          dvv,
+          VectorSimilarityFunction.DOT_PRODUCT,
+          32
+        ) // I use DOT_PRODUCT because we L2-normalized all vectors
+        .withBeamWidth(100)
+        .withNeighborOverflow(1.2f)
+        .withAlpha(1.2f)
+        .build()
+
+      val graphIndex = indexBuilder.getGraph()
 
       val indexSize =
         meter
