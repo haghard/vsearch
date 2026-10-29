@@ -1,6 +1,6 @@
 package com.github.haghard.vsearch
 
-import SearchIndex.Protocol
+import SearchIndex.*
 import akka.actor.typed.*
 import akka.actor.typed.scaladsl.*
 import io.opentelemetry.api.metrics.*

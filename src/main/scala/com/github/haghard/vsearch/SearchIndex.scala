@@ -156,10 +156,11 @@ object SearchIndex {
         active(indexName, vectors, dimensions, vts, embedder, graphIndex, builder, db, gauges)
 
       case Protocol.Get(_, _, topN, query, replyTo) =>
-        ctx.log.info("Index sizes:{} bts/{} elements", graphIndex.ramBytesUsed(), vectors.size())
         gauges.sizeGauge.set(vectors.size())
+        val qBts = embedder.embed(query)
+        ctx.log.info("Index sizes:{} qBts:{} bts/{} elements", graphIndex.ramBytesUsed(), qBts.size, vectors.size())
         val ssp = DefaultSearchScoreProvider.exact(
-          vts.createFloatVector(embedder.embed(query)),
+          vts.createFloatVector(qBts),
           VectorSimilarityFunction.DOT_PRODUCT,
           new ListRandomAccessVectorValues(vectors, dimensions)
         )

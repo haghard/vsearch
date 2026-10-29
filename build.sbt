@@ -79,11 +79,11 @@ libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-slf4j" % AkkaVersion,
   "com.typesafe.akka" %% "akka-http" % akkaHttpVersion,
   "com.typesafe.akka" %% "akka-stream" % AkkaVersion,
-  "org.wvlet.airframe" %% "airframe-ulid" % "2026.2.2",
+  "org.wvlet.airframe" %% "airframe-ulid" % "2026.2.5",
 
   "org.rocksdb" % "rocksdbjni" % "11.8.1",
 
-  "com.microsoft.onnxruntime" % "onnxruntime" % "1.31.0",
+  "com.microsoft.onnxruntime" % "onnxruntime" % "1.31.1",
 
   //djl's native tokenizers package no longer bundles binaries for it past versions. You will need to stay on version 0.36.0
   "ai.djl.huggingface" % "tokenizers" % "0.36.0",
@@ -91,9 +91,9 @@ libraryDependencies ++= Seq(
   //to inject product reviews internally, can be removed.
   "com.opencsv" % "opencsv" % "5.12.0",
 
-  ("io.github.jbellis" % "jvector" % "4.0.1").exclude("org.slf4j", "slf4j-api"),
+  ("io.github.jbellis" % "jvector" % "4.0.2").exclude("org.slf4j", "slf4j-api"),
 
-  "ch.qos.logback" % "logback-classic" % "1.6.5",
+  "ch.qos.logback" % "logback-classic" % "1.6.6",
   //"com.lihaoyi" % "ammonite" % AmmoniteVersion % "test" cross CrossVersion.full
   
   "io.opentelemetry"                       % "opentelemetry-sdk"                         % "1.47.0", //1.47.0
@@ -139,15 +139,11 @@ Compile / run / javaOptions += "-agentlib:native-image-agent=config-output-dir=s
 // GraalVM native image build
 enablePlugins(NativeImagePlugin, JavaAppPackaging, BuildInfoPlugin)
 nativeImageJvm := "graalvm-community"
-//https://github.com/graalvm/container/pkgs/container/native-image-community
-//https://medium.com/graalvm/graalvm-25-3-is-here-41641acebfaf
-//https://github.com/graalvm/graalvm-demos
-//https://github.com/graalvm/graalvm-ce-builds/releases
-//https://github.com/graalvm/graalvm-ce-builds/releases/download/jdk-25.0.2/graalvm-community-jdk-25.0.2_macos-aarch64_bin.tar.gz
-//nativeImageVersion := "25.0.2"// "21.0.2",
-nativeImageVersion := "25.0.4.1"
+nativeImageVersion := "25.0.4.1.1"  //prev=version = 25.0.4.1
 //path/to/graalvm-ce-25.3.4.1/bin/native-image
-nativeImageCommand := List("/Users/haghard/Downloads/graalvm-community-25.3.4.1+1.1/Contents/Home/bin/native-image")
+
+//nativeImageCommand := List("/Users/haghard/Downloads/graalvm-community-25.3.4.1+1.1/Contents/Home/bin/native-image")
+nativeImageCommand := List("/Users/haghard/Downloads/graalvm-community-25.4.4.1.1+1.1/Contents/Home/bin/native-image")
 
 nativeImageOptions := Seq(
   //"-R:PrintFlags=", //(allowed categories: User, Expert, Debug). Default: None
@@ -190,3 +186,6 @@ addCommandAlias("build", "clean;assembly")
 //25.0.4.1
 //export JAVA_HOME=/Users/haghard/Downloads/graalvm-community-25.3.4.1+1.1/Contents/Home
 
+//https://github.com/graalvm/graalvm-ce-builds/releases#release-graal-25.4.4.1.1
+//25.0.4.1.1
+//export JAVA_HOME=/Users/haghard/Downloads/graalvm-community-25.4.4.1.1+1.1/Contents/Home

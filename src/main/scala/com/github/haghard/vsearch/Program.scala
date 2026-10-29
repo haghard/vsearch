@@ -31,12 +31,14 @@ object Program extends Routes {
     val httpPort    = sys.env.getOrElse("HTTP_PORT", "8080").toInt
     // println("imagecode: " + sys.props.get("org.graalvm.nativeimage.imagecode"))
 
-    // val embedder = new EmbeddingGenerator(Path.of("./jina-embeddings-v2-base-en")) 768
+    val dimension = 384
+    // val embedder  = new Embedder(Path.of("./e5-small-v2"), dimension)
+    // val embedder  = new Embedder(Path.of("./jina-embeddings-v2-base-en"), dimension)
     // val embedder = new Embedder(Path.of("./all-MiniLM-L12-v2"))
     // val embedder = new Embedder(Path.of("./all-MiniLM-L6-v2"))
-    val dimension = 384
-    val embedder  = new Embedder(Path.of("./granite-embedding-30m-english"), dimension)
-    val system    = ActorSystem(Program(embedder, dimension, httpAddress, httpPort), "vector-search")
+
+    val embedder = new Embedder(Path.of("./granite-embedding-30m-english"), dimension)
+    val system   = ActorSystem(Program(embedder, dimension, httpAddress, httpPort), "vector-search")
     system.log.info(s"Loaded configuration... ${system.settings.config.root().render(ConfigRenderOptions.concise())}")
 
     val totalMemory = ManagementFactory
