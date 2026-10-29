@@ -163,7 +163,8 @@ object SearchIndex {
 
       case Protocol.Get(_, _, topN, query, replyTo) =>
         gauges.sizeGauge.set(vectors.size())
-        val content = embedder.embed(query).content()
+        val resp    = embedder.embed(query)
+        val content = resp.content()
         content.normalize()
         val qBts = content.vector()
         ctx.log.info("Index sizes:{} / {} bts/{} elements", graphIndex.ramBytesUsed(), qBts.size, vectors.size())

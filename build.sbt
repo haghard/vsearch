@@ -141,10 +141,7 @@ Compile / run / javaOptions += "-agentlib:native-image-agent=config-output-dir=s
 // GraalVM native image build
 enablePlugins(NativeImagePlugin, JavaAppPackaging, BuildInfoPlugin)
 nativeImageJvm := "graalvm-community"
-nativeImageVersion := "25.0.4.1.1"  //prev=version = 25.0.4.1
-//path/to/graalvm-ce-25.3.4.1/bin/native-image
-
-//nativeImageCommand := List("/Users/haghard/Downloads/graalvm-community-25.3.4.1+1.1/Contents/Home/bin/native-image")
+nativeImageVersion := "25.0.4.1.1"
 nativeImageCommand := List("/Users/haghard/Downloads/graalvm-community-25.4.4.1.1+1.1/Contents/Home/bin/native-image")
 
 nativeImageOptions := Seq(
