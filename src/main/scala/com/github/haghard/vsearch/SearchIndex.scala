@@ -1,6 +1,5 @@
 package com.github.haghard.vsearch
 
-import akka.Done
 import akka.actor.typed.*
 import akka.actor.typed.scaladsl.*
 import com.qxotic.jinfer.langchain4j.JinferEmbeddingModel
@@ -21,20 +20,24 @@ import scala.util.Using
 
 object SearchIndex {
 
+  sealed trait Ack
+  case object Ack extends Ack
+
   sealed trait Protocol {
     def index: String
-
     def reqId: String
   }
 
-  object Protocol {
-    final case class Put(index: String, reqId: String, text: String, replyTo: ActorRef[Done]) extends Protocol
+  final case class Init(index: String, reqId: String, replyTo: akka.actor.typed.ActorRef[Ack]) extends Protocol
+  final case class Next(index: String, reqId: String, replyTo: akka.actor.typed.ActorRef[Ack], put: PutBatch)
+      extends Protocol
+  final case class Completed(index: String, reqId: String)                                 extends Protocol
+  final case class Failed(index: String, reqId: String, ex: Throwable)                     extends Protocol
+  final case class Put(index: String, reqId: String, text: String, replyTo: ActorRef[Ack]) extends Protocol
+  final case class Get(index: String, reqId: String, limit: Int, query: String, replyTo: ActorRef[Option[String]])
+      extends Protocol
 
-    final case class PutN(index: String, reqId: String, texts: Seq[String], replyTo: ActorRef[Done]) extends Protocol
-
-    final case class Get(index: String, reqId: String, limit: Int, query: String, replyTo: ActorRef[Option[String]])
-        extends Protocol
-  }
+  final case class PutBatch(index: String, reqId: String, reviews: Seq[String])
 
   final case class Gauges(sizeGauge: LongGauge, getLatency: LongGauge, putLatency: LongGauge)
 
@@ -129,48 +132,57 @@ object SearchIndex {
     ctx: ActorContext[Protocol]
   ): Behavior[Protocol] =
     Behaviors.receiveMessage {
-      case Protocol.Put(_, _, text, replyTo) =>
-        val startTs    = System.nanoTime()
-        val nextNodeId = vectors.size()
-        ctx.log.info("Put at pos {}", nextNodeId)
-
-        val content = embedder.embed(text).content()
-        content.normalize()
-        val bts = content.vector()
-
-        val embeddings = vts.createFloatVector(bts)
-        vectors.add(nextNodeId, embeddings)
-        builder.addGraphNode(nextNodeId, embeddings)
-        db.put(writeInt(nextNodeId), text.getBytes(StandardCharsets.UTF_8))
-        val putTime = (System.nanoTime - startTs) / (1_000L * 1_000L)
-        gauges.sizeGauge.set(vectors.size())
-        gauges.putLatency.set(putTime, Attributes.of(AttributeKey.stringKey("units"), "millis"))
-        replyTo.tell(Done)
-        active(indexName, vectors, dimensions, vts, embedder, graphIndex, builder, db, gauges)
-      case Protocol.PutN(_, _, texts, replyTo) =>
-        texts.foreach { text =>
+      case Init(_, _, replyTo) =>
+        replyTo.tell(Ack)
+        Behaviors.same
+      case Next(_, _, replyTo, putN) =>
+        putN.reviews.foreach { text =>
           val nextNodeId = vectors.size()
-          val content    = embedder.embed(text).content()
-          content.normalize()
-          val embeddings = vts.createFloatVector(content.vector())
+          val cnt        = embedder.embed(text).content()
+          cnt.normalize()
+          val embeddings = vts.createFloatVector(cnt.vector())
           vectors.add(nextNodeId, embeddings)
           builder.addGraphNode(nextNodeId, embeddings)
           db.put(writeInt(nextNodeId), text.getBytes(StandardCharsets.UTF_8))
         }
         gauges.sizeGauge.set(vectors.size())
-        replyTo.tell(Done)
+        ctx.log.info("Index sizes:{}", vectors.size())
+        replyTo.tell(Ack)
         active(indexName, vectors, dimensions, vts, embedder, graphIndex, builder, db, gauges)
-
-      case Protocol.Get(_, _, topN, query, replyTo) =>
+      case Completed(_, _) =>
+        ctx.log.info(
+          "Index {} fully built [Doc number: {} / {}ramBytes]",
+          indexName,
+          vectors.size(),
+          graphIndex.ramBytesUsed()
+        )
+        Behaviors.same
+      case Failed(_, _, ex) =>
+        ctx.log.error(ex.getMessage)
+        Behaviors.stopped
+      case Put(_, _, text, replyTo) =>
+        val startTs    = System.nanoTime()
+        val nextNodeId = vectors.size()
+        ctx.log.info("Put at position {}", nextNodeId)
+        val cnt = embedder.embed(text).content()
+        cnt.normalize()
+        val embeddings = vts.createFloatVector(cnt.vector())
+        vectors.add(nextNodeId, embeddings)
+        builder.addGraphNode(nextNodeId, embeddings)
+        db.put(writeInt(nextNodeId), text.getBytes(StandardCharsets.UTF_8))
+        val putResponseTime = (System.nanoTime - startTs) / (1_000L * 1_000L)
         gauges.sizeGauge.set(vectors.size())
-        val resp    = embedder.embed(query)
-        val content = resp.content()
-        content.normalize()
-        val qBts = content.vector()
-        ctx.log.info("Index sizes:{} / {} bts/{} elements", graphIndex.ramBytesUsed(), qBts.size, vectors.size())
+        gauges.putLatency.set(putResponseTime, Attributes.of(AttributeKey.stringKey("units"), "millis"))
+        replyTo.tell(Ack)
+        active(indexName, vectors, dimensions, vts, embedder, graphIndex, builder, db, gauges)
+      case Get(_, _, topN, query, replyTo) =>
+        gauges.sizeGauge.set(vectors.size())
+        val cnt = embedder.embed(query).content()
+        cnt.normalize()
+        ctx.log.info("Index sizes:{} / {} elements", graphIndex.ramBytesUsed(), vectors.size())
         val ssp = DefaultSearchScoreProvider.exact(
-          vts.createFloatVector(qBts),
-          VectorSimilarityFunction.DOT_PRODUCT,
+          vts.createFloatVector(cnt.vector()),
+          VectorSimilarityFunction.DOT_PRODUCT, // we use PRODUCT due to vector normalization
           new ListRandomAccessVectorValues(vectors, dimensions)
         )
         search(graphIndex, db, ssp, query, replyTo, topN, gauges)
@@ -187,11 +199,11 @@ object SearchIndex {
     gauges: Gauges
   ): Unit =
     Using.resource(new GraphSearcher(graphIndex)) { searcher =>
-      val startTs    = System.nanoTime()
-      val result     = searcher.search(ssp, topN, Bits.ALL)
-      val searchTime = (System.nanoTime - startTs) / 1_000L
-      println(s"★ ★ ★ query=$query. Search took $searchTime micro")
-      gauges.getLatency.set(searchTime, Attributes.of(AttributeKey.stringKey("units"), "micro"))
+      val startTs         = System.nanoTime()
+      val result          = searcher.search(ssp, topN, Bits.ALL)
+      val indexSearchTime = (System.nanoTime - startTs) / 1_000L
+      println(s"★ ★ ★ query=$query. Search took $indexSearchTime micro")
+      gauges.getLatency.set(indexSearchTime, Attributes.of(AttributeKey.stringKey("units"), "micro"))
       val results = new ArrayBuffer[String](topN)
       for (ns <- result.getNodes()) {
         val nodeId = ns.node

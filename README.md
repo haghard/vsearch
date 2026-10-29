@@ -1,7 +1,7 @@
 # Akka HTTP / JVector / GraalVM 
 A sample `akka-http` + `jvector` application compiled and run on GraalVM.
 
-1. Download `model.onnx` https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/tree/main/onnx and put it in `all-MiniLM-L6-v2` or https://huggingface.co/ibm-granite/granite-embedding-30m-english/tree/main/onnx to `granite-embedding-30m-english` 
+1. Download `Qwen3-Embedding-0.6B-Q8_0.gguf` or `Qwen3-Embedding-0.6B-f16.gguf` from https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF/tree/main to `./local-models` 
 
 2. `docker-compose up`
 

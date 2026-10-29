@@ -4,12 +4,15 @@ import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.*
 import akka.http.scaladsl.Http
 import akka.actor.CoordinatedShutdown
+
 import scala.jdk.CollectionConverters.IterableHasAsScala
 import com.typesafe.config.ConfigRenderOptions
 import org.rocksdb.RocksDB
 
 import java.lang.management.ManagementFactory
 import com.qxotic.jinfer.langchain4j.JinferEmbeddingModel
+
+import java.nio.file.Path
 
 object Program extends Routes {
 
@@ -31,12 +34,19 @@ object Program extends Routes {
     val httpPort    = sys.env.getOrElse("HTTP_PORT", "8080").toInt
     // println("imagecode: " + sys.props.get("org.graalvm.nativeimage.imagecode"))
 
-    val modelName                      = "Qwen/Qwen3-Embedding-0.6B-GGUF:Q8_0"
-    val dimension                      = 1024
-    val embedder: JinferEmbeddingModel =
-      JinferEmbeddingModel.builder().model(modelName).build()
+    // https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF/tree/main
+    val modelPath: Path = Path.of(
+      "./local-models/Qwen3-Embedding-0.6B-Q8_0.gguf"
+      // "./local-models/Qwen3-Embedding-0.6B-f16.gguf"
+    )
 
-    val system = ActorSystem(Program(embedder, dimension, httpAddress, httpPort), "vector-search")
+    // val p: Path = java.nio.file.Paths.get("~/.cache/huggingface/hub")
+    // JinferEmbeddingModel.builder().model(modelName).build()
+    val embeddingModel: JinferEmbeddingModel =
+      JinferEmbeddingModel.builder().modelPath(modelPath).build()
+
+    val system =
+      ActorSystem(Program(embeddingModel, embeddingModel.dimension(), httpAddress, httpPort), "vector-search")
     system.log.info(s"Loaded configuration... ${system.settings.config.root().render(ConfigRenderOptions.concise())}")
 
     val totalMemory = ManagementFactory
@@ -49,7 +59,7 @@ object Program extends Routes {
       s"""
          | ★ ★ ★ ★ ★ ★ ★ ★ ★
          | PID: ${ProcessHandle.current().pid()}
-         | EmbeddingModel: $modelName / $dimension
+         | EmbeddingModel: ${modelPath.toFile.toString} / ${embeddingModel.dimension()}
          | Cores:${sys.runtime.availableProcessors()}
          | Memory: {
          |   Total=${sys.runtime.totalMemory() / 1000000}Mb, Max=${sys.runtime.maxMemory() / 1000000}Mb,

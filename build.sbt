@@ -12,6 +12,8 @@ val jinferVersion = "0.3.1"
 //https://github.com/com-lihaoyi/Ammonite/releases
 val AmmoniteVersion = "3.0.9"
 
+
+//https://github.com/graalvm/graalvm-ce-builds/releases#release-graal-25.4.4.1.1
 //export JAVA_HOME=/Users/haghard/Downloads/graalvm-community-25.4.4.1.1+1.1/Contents/Home
 val requiredJvmVersion = "25"
 
@@ -56,7 +58,7 @@ javaOptions ++= Seq(
   "-XX:NativeMemoryTracking=summary", //detail|summary
   "-XX:MaxDirectMemorySize=128m", //Will get an error if allocate more mem for direct byte buffers
   "-XX:+UseCompactObjectHeaders", //In a standard 64-bit JVM, every object has a header that contains metadata. The JVM compresses this metadata into a single 8-byte header.
-  "-XX:ActiveProcessorCount=8",
+  //"-XX:ActiveProcessorCount=8",
 
   "--add-exports", "java.base/jdk.internal.ref=ALL-UNNAMED",
   "--add-exports", "java.base/sun.nio.ch=ALL-UNNAMED",
@@ -80,15 +82,17 @@ libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-slf4j" % AkkaVersion,
   "com.typesafe.akka" %% "akka-http" % AkkaHttpVersion,
   "com.typesafe.akka" %% "akka-stream" % AkkaVersion,
+  "com.typesafe.akka" %% "akka-stream-typed" % AkkaVersion,
+
   "org.wvlet.airframe" %% "airframe-ulid" % "2026.2.5",
 
   "org.rocksdb" % "rocksdbjni" % "11.8.1",
 
-  "com.qxotic" % "jinfer-bom" % jinferVersion,
-  "com.qxotic" % "jinfer-langchain4j" %  jinferVersion,
+  //"com.qxotic" % "jinfer-bom" % jinferVersion,
+  "com.qxotic" % "jinfer-langchain4j" % jinferVersion,
   "com.qxotic" % "jinfer-qwen3" % jinferVersion,
   "com.qxotic" % "jam-vector" % jinferVersion,
-  "org.slf4j" % "slf4j-nop" % "2.0.20",
+  //"org.slf4j" % "slf4j-nop" % "2.0.20",
 
   //to inject product reviews internally, can be removed.
   "com.opencsv" % "opencsv" % "5.12.0",
@@ -96,7 +100,7 @@ libraryDependencies ++= Seq(
   ("io.github.jbellis" % "jvector" % "4.0.2").exclude("org.slf4j", "slf4j-api"),
 
   "ch.qos.logback" % "logback-classic" % "1.6.6",
-  //"com.lihaoyi" % "ammonite" % AmmoniteVersion % "test" cross CrossVersion.full
+  "com.lihaoyi" % "ammonite" % AmmoniteVersion % "test" cross CrossVersion.full,
   
   "io.opentelemetry"                       % "opentelemetry-sdk"                         % "1.47.0", //1.47.0
   "io.opentelemetry"                       % "opentelemetry-exporter-otlp"               % "1.47.0",
@@ -179,12 +183,5 @@ scalafmtOnCompile := true
 
 addCommandAlias("c", "compile")
 addCommandAlias("r", "reload")
-addCommandAlias("native", "clean;nativeImage")
+addCommandAlias("buildNativeImage", "clean;nativeImage")
 addCommandAlias("build", "clean;assembly")
-
-//25.0.4.1
-//export JAVA_HOME=/Users/haghard/Downloads/graalvm-community-25.3.4.1+1.1/Contents/Home
-
-//https://github.com/graalvm/graalvm-ce-builds/releases#release-graal-25.4.4.1.1
-//25.0.4.1.1
-//export JAVA_HOME=/Users/haghard/Downloads/graalvm-community-25.4.4.1.1+1.1/Contents/Home

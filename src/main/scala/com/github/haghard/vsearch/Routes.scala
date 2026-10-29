@@ -1,6 +1,5 @@
 package com.github.haghard.vsearch
 
-import akka.Done
 import akka.actor.typed.scaladsl.AskPattern.Askable
 import akka.actor.typed.*
 import akka.http.scaladsl.model.StatusCodes.*
@@ -34,21 +33,28 @@ trait Routes extends HttpRouteSupport {
 
     // extractLog { implicit log => extractExecutionContext { implicit ec =>
 
-    val reviewsFile = Paths.get("./reviews.csv")
+    val indexName   = "reviews"
+    val reviewsFile = Paths.get(s"./${indexName}.csv")
     val reader      = new CSVReader(new BufferedReader(new FileReader(reviewsFile.toFile)))
     reader.readNext() // drop header
 
+    val graphIndexSink =
+      akka.stream.typed.scaladsl.ActorSink.actorRefWithBackpressure(
+        ref = graphIndexRouter,
+        SearchIndex.Next(indexName, ulid.ULID.newULID.toString, _, _),
+        SearchIndex.Init(indexName, ulid.ULID.newULID.toString, _),
+        SearchIndex.Ack,
+        SearchIndex.Completed(indexName, ulid.ULID.newULID.toString),
+        SearchIndex.Failed(indexName, ulid.ULID.newULID.toString, _)
+      )
+
     Source
       .fromIterator(() => reader.iterator().asScala)
-      .take(1_000)
+      .take(1_024)
       .grouped(16)
-      .mapAsync(3) { lines =>
-        graphIndexRouter.ask[Done](
-          SearchIndex.Protocol.PutN("reviews", ulid.ULID.newULID.toString, lines.map(_(9)), _)
-        )
-      }
+      .map(lines => SearchIndex.PutBatch(indexName, ulid.ULID.newULID.toString, lines.map(_(9))))
+      .to(graphIndexSink)
       .run()
-      .onComplete(_ => println("reviews.csv injected"))(system.executionContext)
 
     val httpMeter  = handle.telemetry.getMeter("http-root")
     val httpGauges = TrieMap.empty[String, LongGauge]
@@ -59,7 +65,7 @@ trait Routes extends HttpRouteSupport {
           path(Segment / "search") { indexName =>
             parameters(Symbol("q").as[String], Symbol("limit") ? 7) { (q, limit) =>
               val reqId = ulid.ULID.newULID.toString
-              val f     = graphIndexRouter.ask[Option[String]](SearchIndex.Protocol.Get(indexName, reqId, limit, q, _))
+              val f     = graphIndexRouter.ask[Option[String]](SearchIndex.Get(indexName, reqId, limit, q, _))
               // HttpResponse(entity = Strict(`text/html(UTF-8)`, ByteString(q)))
               // onSuccess(f) { reqOpt => complete(reqOpt) }
               onComplete(f) {
@@ -77,7 +83,7 @@ trait Routes extends HttpRouteSupport {
           path(Segment / "save") { indexName =>
             parameters(Symbol("text").as[String]) { text =>
               val reqId = ulid.ULID.newULID.toString
-              val f     = graphIndexRouter.ask[Done](SearchIndex.Protocol.Put(indexName, reqId, text, _))
+              val f     = graphIndexRouter.ask[SearchIndex.Ack](SearchIndex.Put(indexName, reqId, text, _))
               onComplete(f) {
                 case Success(_) =>
                   complete(HttpResponse(entity = Strict(`text/html(UTF-8)`, ByteString(reqId))))
