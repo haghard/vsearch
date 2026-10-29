@@ -4,10 +4,15 @@ import SearchIndex.*
 import akka.actor.typed.*
 import akka.actor.typed.scaladsl.*
 import io.opentelemetry.api.metrics.*
+import com.qxotic.jinfer.langchain4j.JinferEmbeddingModel
 
 object IndexRouter {
 
-  def apply(handle: Observability.Handle, embedder: Embedder, dimensions: Int): Behavior[SearchIndex.Protocol] =
+  def apply(
+    handle: Observability.Handle,
+    embedder: JinferEmbeddingModel,
+    dimensions: Int
+  ): Behavior[SearchIndex.Protocol] =
     Behaviors.setup { ctx =>
       val gauge = handle.telemetry
         .getMeter("index-counter")
@@ -22,7 +27,7 @@ object IndexRouter {
     indCounter: Long,
     gauge: LongGauge,
     handle: Observability.Handle,
-    embedder: Embedder,
+    embedder: JinferEmbeddingModel,
     dimensions: Int
   )(implicit ctx: ActorContext[?]): Behavior[SearchIndex.Protocol] =
     Behaviors.receiveMessage { case cmd: Protocol =>

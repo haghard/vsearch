@@ -3,6 +3,7 @@ package com.github.haghard.vsearch
 import akka.Done
 import akka.actor.typed.*
 import akka.actor.typed.scaladsl.*
+import com.qxotic.jinfer.langchain4j.JinferEmbeddingModel
 import io.github.jbellis.jvector.graph.similarity.*
 import io.github.jbellis.jvector.graph.*
 import io.github.jbellis.jvector.util.Bits
@@ -46,7 +47,7 @@ object SearchIndex {
     array
   }
 
-  def apply(meter: Meter, embedder: Embedder, dimensions: Int): Behavior[Protocol] =
+  def apply(meter: Meter, embedder: JinferEmbeddingModel, dimensions: Int): Behavior[Protocol] =
     Behaviors.setup { implicit ctx =>
       val vts: VectorTypeSupport = VectorizationProvider.getInstance().getVectorTypeSupport()
       val vectors                = new util.ArrayList[VectorFloat[?]]()
@@ -119,7 +120,7 @@ object SearchIndex {
     vectors: util.ArrayList[VectorFloat[?]],
     dimensions: Int,
     vts: VectorTypeSupport,
-    embedder: Embedder,
+    embedder: JinferEmbeddingModel,
     graphIndex: ImmutableGraphIndex,
     builder: GraphIndexBuilder,
     db: RocksDB,
@@ -132,7 +133,11 @@ object SearchIndex {
         val startTs    = System.nanoTime()
         val nextNodeId = vectors.size()
         ctx.log.info("Put at pos {}", nextNodeId)
-        val bts        = embedder.embed(text)
+
+        val content = embedder.embed(text).content()
+        content.normalize()
+        val bts = content.vector()
+
         val embeddings = vts.createFloatVector(bts)
         vectors.add(nextNodeId, embeddings)
         builder.addGraphNode(nextNodeId, embeddings)
@@ -145,8 +150,9 @@ object SearchIndex {
       case Protocol.PutN(_, _, texts, replyTo) =>
         texts.foreach { text =>
           val nextNodeId = vectors.size()
-          val bts        = embedder.embed(text)
-          val embeddings = vts.createFloatVector(bts)
+          val content    = embedder.embed(text).content()
+          content.normalize()
+          val embeddings = vts.createFloatVector(content.vector())
           vectors.add(nextNodeId, embeddings)
           builder.addGraphNode(nextNodeId, embeddings)
           db.put(writeInt(nextNodeId), text.getBytes(StandardCharsets.UTF_8))
@@ -157,8 +163,10 @@ object SearchIndex {
 
       case Protocol.Get(_, _, topN, query, replyTo) =>
         gauges.sizeGauge.set(vectors.size())
-        val qBts = embedder.embed(query)
-        ctx.log.info("Index sizes:{} qBts:{} bts/{} elements", graphIndex.ramBytesUsed(), qBts.size, vectors.size())
+        val content = embedder.embed(query).content()
+        content.normalize()
+        val qBts = content.vector()
+        ctx.log.info("Index sizes:{} / {} bts/{} elements", graphIndex.ramBytesUsed(), qBts.size, vectors.size())
         val ssp = DefaultSearchScoreProvider.exact(
           vts.createFloatVector(qBts),
           VectorSimilarityFunction.DOT_PRODUCT,

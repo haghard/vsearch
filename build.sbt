@@ -6,12 +6,13 @@ version := "0.1.0"
 
 //Last Apache2 version https://doc.akka.io/reference/release-notes/2023-05-16-akka-23.5-released.html
 val AkkaVersion = "2.8.2"
-val akkaHttpVersion = "10.5.2"
+val AkkaHttpVersion = "10.5.2"
+val jinferVersion = "0.3.1"
 
 //https://github.com/com-lihaoyi/Ammonite/releases
 val AmmoniteVersion = "3.0.9"
 
-//export JAVA_HOME=/Users/haghard/Downloads/graalvm-community-25.3.4.1+1.1/Contents/Home
+//export JAVA_HOME=/Users/haghard/Downloads/graalvm-community-25.4.4.1.1+1.1/Contents/Home
 val requiredJvmVersion = "25"
 
 initialize := {
@@ -77,16 +78,17 @@ javaOptions ++= Seq(
 libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-actor-typed" % AkkaVersion,
   "com.typesafe.akka" %% "akka-slf4j" % AkkaVersion,
-  "com.typesafe.akka" %% "akka-http" % akkaHttpVersion,
+  "com.typesafe.akka" %% "akka-http" % AkkaHttpVersion,
   "com.typesafe.akka" %% "akka-stream" % AkkaVersion,
   "org.wvlet.airframe" %% "airframe-ulid" % "2026.2.5",
 
   "org.rocksdb" % "rocksdbjni" % "11.8.1",
 
-  "com.microsoft.onnxruntime" % "onnxruntime" % "1.31.1",
-
-  //djl's native tokenizers package no longer bundles binaries for it past versions. You will need to stay on version 0.36.0
-  "ai.djl.huggingface" % "tokenizers" % "0.36.0",
+  "com.qxotic" % "jinfer-bom" % jinferVersion,
+  "com.qxotic" % "jinfer-langchain4j" %  jinferVersion,
+  "com.qxotic" % "jinfer-qwen3" % jinferVersion,
+  "com.qxotic" % "jam-vector" % jinferVersion,
+  "org.slf4j" % "slf4j-nop" % "2.0.20",
 
   //to inject product reviews internally, can be removed.
   "com.opencsv" % "opencsv" % "5.12.0",
