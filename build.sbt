@@ -58,7 +58,7 @@ javaOptions ++= Seq(
   "-XX:NativeMemoryTracking=summary", //detail|summary
   "-XX:MaxDirectMemorySize=128m", //Will get an error if allocate more mem for direct byte buffers
   "-XX:+UseCompactObjectHeaders", //In a standard 64-bit JVM, every object has a header that contains metadata. The JVM compresses this metadata into a single 8-byte header.
-  //"-XX:ActiveProcessorCount=8",
+  "-XX:ActiveProcessorCount=6",
 
   "--add-exports", "java.base/jdk.internal.ref=ALL-UNNAMED",
   "--add-exports", "java.base/sun.nio.ch=ALL-UNNAMED",
@@ -88,9 +88,13 @@ libraryDependencies ++= Seq(
 
   "org.rocksdb" % "rocksdbjni" % "11.8.1",
 
-  //"com.qxotic" % "jinfer-bom" % jinferVersion,
+  //Quixotic: Pure Java Inference at Native Speed by Alfonso Peterssen
+  //https://youtu.be/S7x4DxwRnk4  https://github.com/qxoticai/infer
+
+  "com.qxotic" % "jinfer-bom" % jinferVersion,
   "com.qxotic" % "jinfer-langchain4j" % jinferVersion,
   "com.qxotic" % "jinfer-qwen3" % jinferVersion,
+  //"com.qxotic" % "jinfer-lfm2" % jinferVersion,
   "com.qxotic" % "jam-vector" % jinferVersion,
   //"org.slf4j" % "slf4j-nop" % "2.0.20",
 

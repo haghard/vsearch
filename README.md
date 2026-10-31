@@ -43,3 +43,11 @@ A sample `akka-http` + `jvector` application compiled and run on GraalVM.
 
     http :8080/jcmd
 ###
+
+### Models and other links
+
+ https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF/tree/main
+ https://huggingface.co/LiquidAI/LFM2.5-Embedding-350M-GGUF/tree/main
+
+ https://repo1.maven.org/maven2/com/qxotic/
+ https://github.com/qxoticai/qxotic/blob/main/jinfer/examples/scripts/Search.java

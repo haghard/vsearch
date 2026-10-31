@@ -30,12 +30,17 @@ object Program extends Routes {
       .availableProcessors()
       .toFloat / 1.5).toInt.toString
 
+    // -Djinfer.batchCapacity=1500 -Djinfer.contextCapacity=1500
+    // sys.props += "jinfer.batchCapacity"   -> "1500"
+    // sys.props += "jinfer.contextCapacity" -> "1500"
+
     val httpAddress = sys.env.getOrElse("HTTP_ADDRESS", "::1")
     val httpPort    = sys.env.getOrElse("HTTP_PORT", "8080").toInt
     // println("imagecode: " + sys.props.get("org.graalvm.nativeimage.imagecode"))
 
-    // https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF/tree/main
     val modelPath: Path = Path.of(
+      // "./local-models/LFM2.5-Embedding-350M-Q8_0.gguf"
+      // "./local-models/LFM2.5-Embedding-350M-F16.gguf"
       "./local-models/Qwen3-Embedding-0.6B-Q8_0.gguf"
       // "./local-models/Qwen3-Embedding-0.6B-f16.gguf"
     )
@@ -43,7 +48,10 @@ object Program extends Routes {
     // val p: Path = java.nio.file.Paths.get("~/.cache/huggingface/hub")
     // JinferEmbeddingModel.builder().model(modelName).build()
     val embeddingModel: JinferEmbeddingModel =
-      JinferEmbeddingModel.builder().modelPath(modelPath).build()
+      JinferEmbeddingModel
+        .builder()
+        .modelPath(modelPath)
+        .build()
 
     val system =
       ActorSystem(Program(embeddingModel, embeddingModel.dimension(), httpAddress, httpPort), "vector-search")

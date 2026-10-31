@@ -29,7 +29,7 @@ object SearchIndex {
   }
 
   final case class Init(index: String, reqId: String, replyTo: akka.actor.typed.ActorRef[Ack]) extends Protocol
-  final case class Next(index: String, reqId: String, replyTo: akka.actor.typed.ActorRef[Ack], put: PutBatch)
+  final case class NextBatch(index: String, reqId: String, replyTo: akka.actor.typed.ActorRef[Ack], batch: Batch)
       extends Protocol
   final case class Completed(index: String, reqId: String)                                 extends Protocol
   final case class Failed(index: String, reqId: String, ex: Throwable)                     extends Protocol
@@ -37,17 +37,17 @@ object SearchIndex {
   final case class Get(index: String, reqId: String, limit: Int, query: String, replyTo: ActorRef[Option[String]])
       extends Protocol
 
-  final case class PutBatch(index: String, reqId: String, reviews: Seq[String])
+  final case class Batch(index: String, reqId: String, reviews: Seq[String])
 
   final case class Gauges(sizeGauge: LongGauge, getLatency: LongGauge, putLatency: LongGauge)
 
-  private def writeInt(i: Int): Array[Byte] = {
+  private def writeKey(indexName: String, ind: Int): Array[Byte] = {
     val array = Array.ofDim[Byte](4)
-    array(0) = (i >>> 24).toByte
-    array(1) = (i >>> 16).toByte
-    array(2) = (i >>> 8).toByte
-    array(3) = i.toByte
-    array
+    array(0) = (ind >>> 24).toByte
+    array(1) = (ind >>> 16).toByte
+    array(2) = (ind >>> 8).toByte
+    array(3) = ind.toByte
+    (indexName + ".").getBytes(StandardCharsets.UTF_8) ++ array
   }
 
   def apply(meter: Meter, embedder: JinferEmbeddingModel, dimensions: Int): Behavior[Protocol] =
@@ -73,9 +73,9 @@ object SearchIndex {
       val indexBuilder = io.github.jbellis.jvector.graph.GraphIndexBuilder
         .builder(
           dvv,
-          VectorSimilarityFunction.DOT_PRODUCT,
+          VectorSimilarityFunction.DOT_PRODUCT, // I use DOT_PRODUCT because we L2-normalized all vectors
           32
-        ) // I use DOT_PRODUCT because we L2-normalized all vectors
+        )
         .withBeamWidth(100)
         .withNeighborOverflow(1.2f)
         .withAlpha(1.2f)
@@ -135,61 +135,74 @@ object SearchIndex {
       case Init(_, _, replyTo) =>
         replyTo.tell(Ack)
         Behaviors.same
-      case Next(_, _, replyTo, putN) =>
-        putN.reviews.foreach { text =>
+
+      case NextBatch(indexName, _, replyTo, batch) =>
+        batch.reviews.foreach { review =>
           val nextNodeId = vectors.size()
-          val cnt        = embedder.embed(text).content()
-          cnt.normalize()
-          val embeddings = vts.createFloatVector(cnt.vector())
+          val c          = embedder.embed(review).content()
+          c.normalize()
+
+          val embeddings = vts.createFloatVector(c.vector())
           vectors.add(nextNodeId, embeddings)
           builder.addGraphNode(nextNodeId, embeddings)
-          db.put(writeInt(nextNodeId), text.getBytes(StandardCharsets.UTF_8))
+          db.put(writeKey(indexName, nextNodeId), review.getBytes(StandardCharsets.UTF_8))
         }
+
         gauges.sizeGauge.set(vectors.size())
-        ctx.log.info("Index sizes:{}", vectors.size())
+        ctx.log.info("Building index: size={}", vectors.size())
         replyTo.tell(Ack)
         active(indexName, vectors, dimensions, vts, embedder, graphIndex, builder, db, gauges)
+
       case Completed(_, _) =>
         ctx.log.info(
-          "Index {} fully built [Doc number: {} / {}ramBytes]",
+          "Index {} fully built [num of docs: {} / {} ramBytes]",
           indexName,
           vectors.size(),
           graphIndex.ramBytesUsed()
         )
         Behaviors.same
+
       case Failed(_, _, ex) =>
         ctx.log.error(ex.getMessage)
+        builder.close()
+        graphIndex.close()
         Behaviors.stopped
-      case Put(_, _, text, replyTo) =>
+
+      case Put(indexName, _, review, replyTo) =>
         val startTs    = System.nanoTime()
         val nextNodeId = vectors.size()
         ctx.log.info("Put at position {}", nextNodeId)
-        val cnt = embedder.embed(text).content()
-        cnt.normalize()
-        val embeddings = vts.createFloatVector(cnt.vector())
+
+        val c = embedder.embed(review).content()
+        c.normalize()
+        val embeddings = vts.createFloatVector(c.vector())
+
         vectors.add(nextNodeId, embeddings)
         builder.addGraphNode(nextNodeId, embeddings)
-        db.put(writeInt(nextNodeId), text.getBytes(StandardCharsets.UTF_8))
+        db.put(writeKey(indexName, nextNodeId), review.getBytes(StandardCharsets.UTF_8))
+
         val putResponseTime = (System.nanoTime - startTs) / (1_000L * 1_000L)
         gauges.sizeGauge.set(vectors.size())
         gauges.putLatency.set(putResponseTime, Attributes.of(AttributeKey.stringKey("units"), "millis"))
         replyTo.tell(Ack)
         active(indexName, vectors, dimensions, vts, embedder, graphIndex, builder, db, gauges)
-      case Get(_, _, topN, query, replyTo) =>
+
+      case Get(indexName, _, topN, query, replyTo) =>
         gauges.sizeGauge.set(vectors.size())
-        val cnt = embedder.embed(query).content()
-        cnt.normalize()
+        val c = embedder.embed(query).content()
+        c.normalize()
         ctx.log.info("Index sizes:{} / {} elements", graphIndex.ramBytesUsed(), vectors.size())
         val ssp = DefaultSearchScoreProvider.exact(
-          vts.createFloatVector(cnt.vector()),
+          vts.createFloatVector(c.vector()),
           VectorSimilarityFunction.DOT_PRODUCT, // we use PRODUCT due to vector normalization
           new ListRandomAccessVectorValues(vectors, dimensions)
         )
-        search(graphIndex, db, ssp, query, replyTo, topN, gauges)
+        search(indexName, graphIndex, db, ssp, query, replyTo, topN, gauges)
         Behaviors.same
     }
 
   def search(
+    indexName: String,
     graphIndex: ImmutableGraphIndex,
     db: RocksDB,
     ssp: SearchScoreProvider,
@@ -202,14 +215,14 @@ object SearchIndex {
       val startTs         = System.nanoTime()
       val result          = searcher.search(ssp, topN, Bits.ALL)
       val indexSearchTime = (System.nanoTime - startTs) / 1_000L
-      println(s"★ ★ ★ query=$query. Search took $indexSearchTime micro")
+      println(s"★ ★ ★ query=$query. Search took $indexSearchTime micro.")
       gauges.getLatency.set(indexSearchTime, Attributes.of(AttributeKey.stringKey("units"), "micro"))
       val results = new ArrayBuffer[String](topN)
       for (ns <- result.getNodes()) {
         val nodeId = ns.node
         val score  = ns.score
         results.addOne(s"score:$score;nodeId:$nodeId")
-        Option(db.get(writeInt(nodeId))).foreach { bytes =>
+        Option(db.get(writeKey(indexName, nodeId))).foreach { bytes =>
           println(s"id=$nodeId:score=$score - ${new String(bytes, StandardCharsets.UTF_8)}")
         }
       }

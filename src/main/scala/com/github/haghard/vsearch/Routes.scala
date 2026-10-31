@@ -41,7 +41,7 @@ trait Routes extends HttpRouteSupport {
     val graphIndexSink =
       akka.stream.typed.scaladsl.ActorSink.actorRefWithBackpressure(
         ref = graphIndexRouter,
-        SearchIndex.Next(indexName, ulid.ULID.newULID.toString, _, _),
+        SearchIndex.NextBatch(indexName, ulid.ULID.newULID.toString, _, _),
         SearchIndex.Init(indexName, ulid.ULID.newULID.toString, _),
         SearchIndex.Ack,
         SearchIndex.Completed(indexName, ulid.ULID.newULID.toString),
@@ -50,9 +50,9 @@ trait Routes extends HttpRouteSupport {
 
     Source
       .fromIterator(() => reader.iterator().asScala)
-      .take(1_024)
+      .take(1_028)
       .grouped(16)
-      .map(lines => SearchIndex.PutBatch(indexName, ulid.ULID.newULID.toString, lines.map(_(9))))
+      .map(lines => SearchIndex.Batch(indexName, ulid.ULID.newULID.toString, lines.map(l => l(9))))
       .to(graphIndexSink)
       .run()
 
@@ -65,7 +65,8 @@ trait Routes extends HttpRouteSupport {
           path(Segment / "search") { indexName =>
             parameters(Symbol("q").as[String], Symbol("limit") ? 7) { (q, limit) =>
               val reqId = ulid.ULID.newULID.toString
-              val f     = graphIndexRouter.ask[Option[String]](SearchIndex.Get(indexName, reqId, limit, q, _))
+              val f     =
+                graphIndexRouter.ask[Option[String]](SearchIndex.Get(indexName, reqId, limit, q, _))
               // HttpResponse(entity = Strict(`text/html(UTF-8)`, ByteString(q)))
               // onSuccess(f) { reqOpt => complete(reqOpt) }
               onComplete(f) {
