@@ -7,9 +7,9 @@ A sample `akka-http` + `jvector` application compiled and run on GraalVM.
 
 ## Tech Stack
     - Java 25 + GraalVM native-image
-    - ONNX Runtime  — embedded all-MiniLM-L6-v2 or granite-embedding-30m-english (384 dim) 
-    - Jvector — HNSW index for vector search (sentence similarity search)  
-    - akka-http — Http server
+    - Quixotic - Pure Java Inference. Qwen3-Embedding-0.6B-Q8_0.gguf (1024 dim) 
+    - Jvector - HNSW index for vector search (sentence similarity search)  
+    - akka-http - Http server
   
 ### Compile, Build and Run on JVM
     //export SBT_OPTS="-Xmx4G"
@@ -20,7 +20,7 @@ A sample `akka-http` + `jvector` application compiled and run on GraalVM.
 
     Download https://github.com/graalvm/graalvm-ce-builds/releases#release-graal-25.4.4.1.1
 
-    export JAVA_HOME=/Users/myusrhaghard/Downloads/graalvm-community-25.4.4.1.1+1.1/Contents/Home
+    export JAVA_HOME=/Users/myusr/Downloads/graalvm-community-25.4.4.1.1+1.1/Contents/Home
 
     sbt run //generartes content in native-image
 
