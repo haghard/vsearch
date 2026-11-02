@@ -5,6 +5,7 @@ import akka.actor.typed.scaladsl.*
 import com.qxotic.jinfer.langchain4j.JinferEmbeddingModel
 import io.github.jbellis.jvector.graph.similarity.*
 import io.github.jbellis.jvector.graph.*
+import io.github.jbellis.jvector.quantization.{PQVectors, ProductQuantization}
 import io.github.jbellis.jvector.util.Bits
 import io.github.jbellis.jvector.vector.*
 import io.github.jbellis.jvector.vector.types.*
@@ -54,8 +55,6 @@ object SearchIndex {
     Behaviors.setup { implicit ctx =>
       val vts: VectorTypeSupport = VectorizationProvider.getInstance().getVectorTypeSupport()
       val vectors                = new util.ArrayList[VectorFloat[?]]()
-
-      // val dvv                    = new DynamicVectorValues(dimensions)
       val dvv = new ListRandomAccessVectorValues(vectors, dimension)
 
       val indexName = ctx.self.path.elements.last
@@ -122,7 +121,7 @@ object SearchIndex {
   def active(
     indexName: String,
     vectors: util.ArrayList[VectorFloat[?]],
-    dimensions: Int,
+    dimension: Int,
     vts: VectorTypeSupport,
     embeddingModel: JinferEmbeddingModel,
     graphIndex: ImmutableGraphIndex,
@@ -146,7 +145,8 @@ object SearchIndex {
           c.normalize()
 
           val embeddings = vts.createFloatVector(c.vector())
-          vectors.add(nextNodeId, embeddings)
+          vectors.add(embeddings)
+          // vectors.add(nextNodeId, embeddings)
           wb.put(writeKey(indexName, nextNodeId), review.getBytes(StandardCharsets.UTF_8))
           builder.addGraphNode(nextNodeId, embeddings)
         }
@@ -155,7 +155,7 @@ object SearchIndex {
         gauges.sizeGauge.set(vectors.size())
         ctx.log.info("Building index: size={}", vectors.size())
         replyTo.tell(Ack)
-        active(indexName, vectors, dimensions, vts, embeddingModel, graphIndex, builder, db, wrOps, gauges)
+        active(indexName, vectors, dimension, vts, embeddingModel, graphIndex, builder, db, wrOps, gauges)
 
       case Completed(_, _) =>
         ctx.log.info(
@@ -181,7 +181,7 @@ object SearchIndex {
         c.normalize()
         val embeddings = vts.createFloatVector(c.vector())
 
-        vectors.add(nextNodeId, embeddings)
+        vectors.add(embeddings)
         builder.addGraphNode(nextNodeId, embeddings)
         db.put(writeKey(indexName, nextNodeId), review.getBytes(StandardCharsets.UTF_8))
 
@@ -189,7 +189,7 @@ object SearchIndex {
         gauges.sizeGauge.set(vectors.size())
         gauges.putLatency.set(putResponseTime, Attributes.of(AttributeKey.stringKey("units"), "millis"))
         replyTo.tell(Ack)
-        active(indexName, vectors, dimensions, vts, embeddingModel, graphIndex, builder, db, wrOps, gauges)
+        active(indexName, vectors, dimension, vts, embeddingModel, graphIndex, builder, db, wrOps, gauges)
 
       case Search(indexName, _, topN, query, replyTo) =>
         gauges.sizeGauge.set(vectors.size())
@@ -199,7 +199,7 @@ object SearchIndex {
         val ssp = DefaultSearchScoreProvider.exact(
           vts.createFloatVector(c.vector()),
           VectorSimilarityFunction.DOT_PRODUCT, // we use PRODUCT due to vector normalization
-          new ListRandomAccessVectorValues(vectors, dimensions)
+          new ListRandomAccessVectorValues(vectors, dimension)
         )
         search(indexName, graphIndex, db, ssp, query, replyTo, topN, gauges)
         Behaviors.same
