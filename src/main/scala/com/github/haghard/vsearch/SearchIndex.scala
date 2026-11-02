@@ -50,21 +50,21 @@ object SearchIndex {
     (indexName + ".").getBytes(StandardCharsets.UTF_8) ++ array
   }
 
-  def apply(meter: Meter, embedder: JinferEmbeddingModel, dimensions: Int): Behavior[Protocol] =
+  def apply(meter: Meter, embeddingModel: JinferEmbeddingModel, dimension: Int): Behavior[Protocol] =
     Behaviors.setup { implicit ctx =>
       val vts: VectorTypeSupport = VectorizationProvider.getInstance().getVectorTypeSupport()
       val vectors                = new util.ArrayList[VectorFloat[?]]()
 
       // val dvv                    = new DynamicVectorValues(dimensions)
-      val dvv = new ListRandomAccessVectorValues(vectors, dimensions)
+      val dvv = new ListRandomAccessVectorValues(vectors, dimension)
 
       val indexName = ctx.self.path.elements.last
-      val dbPath    = s"./db/$indexName"
+      val dbPath    = s"./db/kv-data"
       val options   = new Options()
         .setCreateIfMissing(true)
         .setWriteBufferSize(10 * SizeUnit.KB)
         .setMaxWriteBufferNumber(3)
-        .setBytesPerSync(3 * SizeUnit.MB)
+        .setBytesPerSync(5 * SizeUnit.MB)
         .setCompressionType(CompressionType.SNAPPY_COMPRESSION)
         .setCompactionStyle(CompactionStyle.UNIVERSAL)
         .setIncreaseParallelism(Runtime.getRuntime().availableProcessors())
@@ -108,9 +108,9 @@ object SearchIndex {
       active(
         indexName,
         vectors,
-        dimensions,
+        dimension,
         vts,
-        embedder,
+        embeddingModel,
         graphIndex,
         indexBuilder,
         db,
@@ -124,7 +124,7 @@ object SearchIndex {
     vectors: util.ArrayList[VectorFloat[?]],
     dimensions: Int,
     vts: VectorTypeSupport,
-    embedder: JinferEmbeddingModel,
+    embeddingModel: JinferEmbeddingModel,
     graphIndex: ImmutableGraphIndex,
     builder: GraphIndexBuilder,
     db: RocksDB,
@@ -142,7 +142,7 @@ object SearchIndex {
         val wb = new WriteBatch()
         batch.reviews.foreach { review =>
           val nextNodeId = vectors.size()
-          val c          = embedder.embed(review).content()
+          val c          = embeddingModel.embed(review).content()
           c.normalize()
 
           val embeddings = vts.createFloatVector(c.vector())
@@ -155,11 +155,11 @@ object SearchIndex {
         gauges.sizeGauge.set(vectors.size())
         ctx.log.info("Building index: size={}", vectors.size())
         replyTo.tell(Ack)
-        active(indexName, vectors, dimensions, vts, embedder, graphIndex, builder, db, wrOps, gauges)
+        active(indexName, vectors, dimensions, vts, embeddingModel, graphIndex, builder, db, wrOps, gauges)
 
       case Completed(_, _) =>
         ctx.log.info(
-          "Index {} fully built [num of docs: {} / {} ramBytes]",
+          "Index {} fully built [num of docs: {} / {} ramBytesUsed]",
           indexName,
           vectors.size(),
           graphIndex.ramBytesUsed()
@@ -177,7 +177,7 @@ object SearchIndex {
         val nextNodeId = vectors.size()
         ctx.log.info("Put at position {}", nextNodeId)
 
-        val c = embedder.embed(review).content()
+        val c = embeddingModel.embed(review).content()
         c.normalize()
         val embeddings = vts.createFloatVector(c.vector())
 
@@ -189,11 +189,11 @@ object SearchIndex {
         gauges.sizeGauge.set(vectors.size())
         gauges.putLatency.set(putResponseTime, Attributes.of(AttributeKey.stringKey("units"), "millis"))
         replyTo.tell(Ack)
-        active(indexName, vectors, dimensions, vts, embedder, graphIndex, builder, db, wrOps, gauges)
+        active(indexName, vectors, dimensions, vts, embeddingModel, graphIndex, builder, db, wrOps, gauges)
 
       case Search(indexName, _, topN, query, replyTo) =>
         gauges.sizeGauge.set(vectors.size())
-        val c = embedder.embed(query).content()
+        val c = embeddingModel.embed(query).content()
         c.normalize()
         ctx.log.info("Index sizes:{} / {} elements", graphIndex.ramBytesUsed(), vectors.size())
         val ssp = DefaultSearchScoreProvider.exact(
@@ -216,16 +216,16 @@ object SearchIndex {
     gauges: Gauges
   ): Unit =
     Using.resource(new GraphSearcher(graphIndex)) { searcher =>
-      val startTs         = System.nanoTime()
-      val result          = searcher.search(ssp, topN, Bits.ALL)
-      val indexSearchTime = (System.nanoTime() - startTs) / 1_000L
-      gauges.getLatency.set(indexSearchTime, Attributes.of(AttributeKey.stringKey("units"), "micro"))
+      val startTs            = System.nanoTime()
+      val result             = searcher.search(ssp, topN, Bits.ALL)
+      val searchResponseTime = (System.nanoTime() - startTs) / 1_000L
+      gauges.getLatency.set(searchResponseTime, Attributes.of(AttributeKey.stringKey("units"), "micro"))
 
       val graphIndexView = graphIndex.getView()
 
       @scala.annotation.nowarn
       val size = graphIndexView.size()
-      println(s"★ ★ ★ query=$query. Index size:${size} Search took $indexSearchTime micro")
+      println(s"★ ★ ★ query=$query. Index size:$size Search took $searchResponseTime micro")
 
       val results = new ArrayBuffer[String](topN)
       for (ns <- result.getNodes()) {
